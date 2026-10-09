@@ -1,6 +1,8 @@
 import random
 import string
 
+from cryptarithm.solver import words_share_letters
+
 
 def generate_puzzle(difficulty="Easy", seed=None):
     """Generate a solvable addition puzzle."""
@@ -18,11 +20,13 @@ def generate_puzzle(difficulty="Easy", seed=None):
     smallest = 10 ** (width - 1)
     largest = (10 ** width) - 1
 
-    left = rng.randint(smallest, largest)
-    right = rng.randint(smallest, largest)
-    total = left + right
-
     def to_word(number):
         return "".join(digit_to_letter[int(digit)] for digit in str(number))
 
-    return f"{to_word(left)} + {to_word(right)} = {to_word(total)}"
+    while True:
+        left = rng.randint(smallest, largest)
+        right = rng.randint(smallest, largest)
+        total = left + right
+        words = (to_word(left), to_word(right), to_word(total))
+        if words_share_letters(words):
+            return f"{words[0]} + {words[1]} = {words[2]}"

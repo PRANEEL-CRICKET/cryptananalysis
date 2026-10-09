@@ -1,7 +1,14 @@
 # Cryptarithm Lab
 
 Cryptarithm Lab solves and helps you practice addition cryptarithms such as
-`SEND + MORE = MONEY`. It includes a desktop app and a Streamlit web app.
+`SEND + MORE = MONEY`. Its desktop and Streamlit web apps include a timed
+letter-card challenge with Easy (5-minute), Medium (10-minute), and Hard
+(30-minute) limits, plus solved and unsolved challenge history.
+
+Puzzle inputs are checked for at most 10 distinct letters, a result length
+that can be reached by adding the input words, and shared letters between
+words. Leading letters cannot be zero. The challenge checks the submitted
+letter-to-digit assignment and shows column/carry steps after each attempt.
 
 ## Requirements
 

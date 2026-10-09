@@ -1,5 +1,6 @@
 import tkinter as tk
 from tkinter import messagebox, ttk
+from time import monotonic
 
 from cryptarithm.generator import generate_puzzle
 from cryptarithm.progress import (
@@ -7,7 +8,20 @@ from cryptarithm.progress import (
     record_attempt,
     suggested_difficulty,
 )
-from cryptarithm.solver import parse_puzzle, solve
+from cryptarithm.solver import (
+    check_solution,
+    parse_puzzle,
+    solution_steps,
+    solve,
+)
+
+game_active = False
+game_deadline = 0.0
+game_timer_after_id = None
+game_result = None
+game_equation = ""
+game_difficulty = "Easy"
+game_answer_entries = {}
 
 
 # ---------- App actions ----------
@@ -29,7 +43,12 @@ def solve_puzzle():
     clear_text(solve_output)
 
     if not result.solutions:
-        solve_output.insert(tk.END, "No solution found.\n")
+        solve_output.insert(
+            tk.END,
+            "No solution exists: no digit assignment satisfies the "
+            "distinct-digit, leading-letter, and column-carry constraints. "
+            "Check the shared letters for a contradiction.\n",
+        )
     else:
         mapping = result.solutions[0]
 
@@ -70,7 +89,229 @@ def solve_puzzle():
         for step in result.explanation:
             solve_output.insert(tk.END, f"  • {step}\n")
 
-    set_status("Puzzle solved. Record your own practice result when ready.")
+    set_status(
+        "Puzzle solved. Record your own practice result when ready."
+        if result.solutions
+        else "No solution found; see the constraint explanation."
+    )
+
+
+def start_letter_card_challenge():
+    global game_active, game_deadline, game_difficulty, game_equation
+    global game_result
+
+    if game_active:
+        set_status("Submit your current challenge or wait for its timer.")
+        return
+
+    equation = game_entry.get().strip()
+    clear_text(game_output)
+
+    for card in game_cards_frame.winfo_children():
+        card.destroy()
+    game_answer_entries.clear()
+
+    if not equation:
+        game_output.insert(tk.END, "Enter an equation before starting.")
+        return
+
+    try:
+        result = solve(equation, strategy="mrv_fc", max_solutions=2)
+    except ValueError as error:
+        game_output.insert(tk.END, f"Invalid puzzle: {error}")
+        set_status("Please check the puzzle format.")
+        return
+
+    if not result.solutions:
+        game_output.insert(
+            tk.END,
+            "No solution exists: no digit assignment satisfies the "
+            "distinct-digit, leading-letter, and column-carry constraints. "
+            "Check the shared letters for a contradiction.",
+        )
+        set_status("No solution found; see the challenge explanation.")
+        return
+
+    game_result = result
+    game_equation = equation
+    game_difficulty = game_difficulty_box.get()
+    game_active = True
+    seconds = {"Easy": 300, "Medium": 600, "Hard": 1800}[game_difficulty]
+    game_deadline = monotonic() + seconds
+    for index, letter in enumerate(result.puzzle.letters):
+        card = ttk.LabelFrame(
+            game_cards_frame,
+            text=letter,
+            padding=(12, 8),
+        )
+        card.grid(
+            row=index // 5,
+            column=index % 5,
+            padx=5,
+            pady=5,
+            sticky="nsew",
+        )
+        ttk.Label(
+            card,
+            text="Choose digit",
+            style="CardTitle.TLabel",
+        ).pack()
+        answer_entry = ttk.Entry(card, width=5, justify="center")
+        answer_entry.pack(pady=(4, 0))
+        game_answer_entries[letter] = answer_entry
+
+    update_challenge_timer()
+    set_status(f"{game_difficulty_box.get()} challenge started.")
+
+
+def generate_game_challenge():
+    if game_active:
+        set_status("Finish your current challenge before generating another.")
+        return
+
+    try:
+        equation = generate_puzzle(game_difficulty_box.get())
+    except ValueError as error:
+        game_output.delete("1.0", tk.END)
+        game_output.insert(tk.END, f"Could not generate puzzle: {error}")
+        return
+
+    game_entry.delete(0, tk.END)
+    game_entry.insert(0, equation)
+    clear_text(game_output)
+    set_status(f"{game_difficulty_box.get()} challenge puzzle generated.")
+
+
+def update_challenge_timer():
+    global game_timer_after_id
+
+    if not game_active:
+        return
+
+    game_timer_after_id = None
+    remaining = max(0, int(game_deadline - monotonic() + 0.999))
+    if remaining == 0:
+        finish_letter_card_challenge(False, "Time expired.")
+        return
+
+    game_timer_text.set(
+        f"Time remaining: {remaining // 60:02d}:{remaining % 60:02d}"
+    )
+    game_timer_after_id = root.after(1000, update_challenge_timer)
+
+
+def submit_letter_card_challenge():
+    if not game_active or game_result is None:
+        set_status("Start a challenge before submitting an answer.")
+        return
+
+    if monotonic() >= game_deadline:
+        finish_letter_card_challenge(False, "Time expired.")
+        return
+
+    answer = {}
+    try:
+        for letter, entry in game_answer_entries.items():
+            value = entry.get().strip()
+            if len(value) != 1 or value not in "0123456789":
+                raise ValueError("Enter one digit on every letter card.")
+            answer[letter] = int(value)
+    except ValueError as error:
+        finish_letter_card_challenge(False, str(error))
+        return
+
+    solved = check_solution(game_result.puzzle, answer)
+    finish_letter_card_challenge(
+        solved,
+        "Correct answer."
+        if solved
+        else "The digit assignment was incorrect.",
+    )
+
+
+def finish_letter_card_challenge(solved, reason):
+    global game_active, game_timer_after_id
+
+    if not game_active or game_result is None:
+        return
+
+    game_active = False
+    if game_timer_after_id is not None:
+        root.after_cancel(game_timer_after_id)
+        game_timer_after_id = None
+    puzzle = game_result.puzzle
+    record_attempt(
+        game_equation,
+        solved,
+        letter_count=len(puzzle.letters),
+        difficulty=game_difficulty,
+        challenge=True,
+        reason=reason,
+    )
+    game_timer_text.set(
+        "Solved" if solved else "Unsolved"
+    )
+    game_output.delete("1.0", tk.END)
+    game_output.insert(
+        tk.END,
+        "SOLVED\n" if solved else f"UNSOLVED — {reason}\n",
+        "heading",
+    )
+    mapping = game_result.solutions[0]
+    game_output.insert(tk.END, "\nSOLUTION MAPPING\n", "heading")
+    for letter in puzzle.letters:
+        game_output.insert(tk.END, f"  {letter} = {mapping[letter]}\n")
+
+    addends = [
+        int("".join(str(mapping[letter]) for letter in word))
+        for word in puzzle.addends
+    ]
+    answer_value = int(
+        "".join(str(mapping[letter]) for letter in puzzle.result)
+    )
+    game_output.insert(tk.END, "\nANSWER CHECK\n", "heading")
+    game_output.insert(
+        tk.END,
+        f"{' + '.join(map(str, addends))} = {answer_value}\n",
+    )
+    game_output.insert(tk.END, "\nCOLUMN-BY-COLUMN SOLUTION\n", "heading")
+    for step in solution_steps(puzzle, mapping):
+        game_output.insert(tk.END, f"  • {step}\n")
+
+    refresh_challenge_history()
+    set_status(
+        "Challenge solved and saved."
+        if solved
+        else "Challenge saved under Unsolved; review the worked solution."
+    )
+
+
+def refresh_challenge_history():
+    if "game_history_output" not in globals():
+        return
+
+    history = [
+        attempt
+        for attempt in load_progress()
+        if attempt.get("source") == "challenge"
+    ]
+    solved = [attempt for attempt in history if attempt.get("solved")]
+    unsolved = [attempt for attempt in history if not attempt.get("solved")]
+
+    game_history_output.delete("1.0", tk.END)
+    game_history_output.insert(tk.END, f"SOLVED ({len(solved)})\n", "heading")
+    for attempt in solved:
+        game_history_output.insert(tk.END, f"  {attempt['equation']}\n")
+    game_history_output.insert(
+        tk.END,
+        f"\nUNSOLVED ({len(unsolved)})\n",
+        "heading",
+    )
+    for attempt in unsolved:
+        game_history_output.insert(
+            tk.END,
+            f"  {attempt['equation']} — {attempt.get('reason', '')}\n",
+        )
 
 
 def create_puzzle():
@@ -487,10 +728,12 @@ notebook = ttk.Notebook(page)
 notebook.pack(fill="both", expand=True)
 
 solve_tab = ttk.Frame(notebook, padding=16)
+game_tab = ttk.Frame(notebook, padding=16)
 research_tab = ttk.Frame(notebook, padding=16)
 learning_tab = ttk.Frame(notebook, padding=16)
 
 notebook.add(solve_tab, text="  Solve & Practice  ")
+notebook.add(game_tab, text="  Fun Games  ")
 notebook.add(research_tab, text="  Research  ")
 notebook.add(learning_tab, text="  Learning Dashboard  ")
 
@@ -572,6 +815,91 @@ ttk.Label(
 
 solve_frame, solve_output = make_text_area(solve_tab, height=18)
 solve_frame.pack(fill="both", expand=True)
+
+# ---------- Timed challenge tab ----------
+
+ttk.Label(
+    game_tab,
+    text="Timed letter-card challenge",
+    font=("Segoe UI", 15, "bold"),
+).pack(anchor="w")
+
+ttk.Label(
+    game_tab,
+    text=(
+        "Assign one different digit to every letter before time runs out. "
+        "Correct answers go into Solved; other attempts go into Unsolved."
+    ),
+    style="Subtitle.TLabel",
+    wraplength=820,
+).pack(anchor="w", pady=(3, 8))
+
+game_entry = ttk.Entry(game_tab, font=("Segoe UI", 12))
+game_entry.pack(fill="x", pady=(0, 8))
+game_entry.insert(0, "SEND + MORE = MONEY")
+
+game_action_row = ttk.Frame(game_tab)
+game_action_row.pack(fill="x", pady=(0, 8))
+
+ttk.Label(game_action_row, text="Difficulty:").pack(side="left", padx=(0, 6))
+game_difficulty_box = ttk.Combobox(
+    game_action_row,
+    values=["Easy", "Medium", "Hard"],
+    state="readonly",
+    width=9,
+)
+game_difficulty_box.set("Easy")
+game_difficulty_box.pack(side="left", padx=(0, 8))
+
+ttk.Button(
+    game_action_row,
+    text="Generate challenge",
+    command=generate_game_challenge,
+).pack(side="left", padx=(0, 8))
+
+ttk.Button(
+    game_action_row,
+    text="Start challenge",
+    style="Primary.TButton",
+    command=start_letter_card_challenge,
+).pack(side="left", padx=(0, 8))
+
+ttk.Button(
+    game_action_row,
+    text="Check answer",
+    command=submit_letter_card_challenge,
+).pack(side="left")
+
+game_timer_text = tk.StringVar(value="Choose a difficulty and start.")
+ttk.Label(
+    game_tab,
+    textvariable=game_timer_text,
+    font=("Segoe UI", 11, "bold"),
+).pack(anchor="w", pady=(0, 6))
+
+game_cards = ttk.LabelFrame(game_tab, text="Letter cards", padding=8)
+game_cards.pack(fill="x", pady=(0, 8))
+game_cards_frame = ttk.Frame(game_cards, style="Card.TFrame")
+game_cards_frame.pack(fill="x")
+
+ttk.Label(
+    game_tab,
+    text="Challenge result and solution steps",
+    font=("Segoe UI", 11, "bold"),
+).pack(anchor="w", pady=(0, 4))
+
+game_frame, game_output = make_text_area(game_tab, height=8)
+game_frame.pack(fill="both", expand=True, pady=(0, 6))
+
+ttk.Label(
+    game_tab,
+    text="Challenge history",
+    font=("Segoe UI", 11, "bold"),
+).pack(anchor="w", pady=(0, 4))
+
+game_history_frame, game_history_output = make_text_area(game_tab, height=5)
+game_history_frame.pack(fill="x")
+refresh_challenge_history()
 
 # ---------- Research tab ----------
 

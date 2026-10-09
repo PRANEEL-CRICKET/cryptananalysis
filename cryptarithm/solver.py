@@ -22,6 +22,15 @@ class SolveResult:
     strategy: str
 
 
+def words_share_letters(words: tuple[str, ...]) -> bool:
+    """Return whether any two words share a letter."""
+    return any(
+        set(first) & set(second)
+        for index, first in enumerate(words)
+        for second in words[index + 1:]
+    )
+
+
 def parse_puzzle(equation: str) -> Puzzle:
     """Parse a puzzle like SEND + MORE = MONEY."""
     if equation.count("=") != 1:
@@ -45,6 +54,24 @@ def parse_puzzle(equation: str) -> Puzzle:
             f"this puzzle has {len(letters)}."
         )
 
+    maximum_sum = sum(10 ** len(word) - 1 for word in addends)
+    maximum_result_length = len(str(maximum_sum))
+    if len(result) > maximum_result_length:
+        longest_addend = max(map(len, addends))
+        raise ValueError(
+            f"The result has {len(result)} letters, but these addends can "
+            f"sum to at most {maximum_result_length} digits. For two "
+            f"addends, the result can be at most one letter longer than "
+            f"the longest addend ({longest_addend} letters)."
+        )
+
+    if not words_share_letters(words):
+        raise ValueError(
+            "The words do not share any letters, so the puzzle has no "
+            "interlocking letter constraints. Share at least one letter "
+            "between two words."
+        )
+
     leading = frozenset(word[0] for word in words if len(word) > 1)
 
     return Puzzle(
@@ -60,6 +87,75 @@ def word_value(word: str, assignment: dict[str, int]) -> int:
     return int("".join(str(assignment[letter]) for letter in word))
 
 
+def check_solution(puzzle: Puzzle, assignment: dict[str, int]) -> bool:
+    """Return whether an assignment is a valid solution for a puzzle."""
+    if set(assignment) != set(puzzle.letters):
+        return False
+
+    digits = list(assignment.values())
+    if any(type(digit) is not int or not 0 <= digit <= 9 for digit in digits):
+        return False
+    if len(set(digits)) != len(digits):
+        return False
+    if any(assignment[letter] == 0 for letter in puzzle.leading):
+        return False
+
+    return sum(
+        word_value(word, assignment)
+        for word in puzzle.addends
+    ) == word_value(puzzle.result, assignment)
+
+
+def solution_steps(puzzle: Puzzle, assignment: dict[str, int]) -> list[str]:
+    """Describe the column addition and carry for a valid assignment."""
+    width = max(
+        max(len(word) for word in puzzle.addends),
+        len(puzzle.result),
+    )
+    carry = 0
+    steps = []
+
+    for column in range(width):
+        addend_letters = [
+            word[-1 - column]
+            for word in puzzle.addends
+            if column < len(word)
+        ]
+        addend_total = sum(assignment[letter] for letter in addend_letters)
+        column_total = addend_total + carry
+        result_letter = (
+            puzzle.result[-1 - column]
+            if column < len(puzzle.result)
+            else None
+        )
+        next_carry = column_total // 10
+        column_names = ("Units", "Tens", "Hundreds")
+        column_name = (
+            column_names[column]
+            if column < len(column_names)
+            else f"10^{column}"
+        )
+        addend_values = " + ".join(
+            f"{letter}={assignment[letter]}" for letter in addend_letters
+        )
+        result_label = (
+            f"{result_letter}={assignment[result_letter]}"
+            if result_letter is not None
+            else "no result digit"
+        )
+        if not addend_letters:
+            steps.append(f"Final carry: {carry}; {result_label}.")
+            carry = 0
+            continue
+        steps.append(
+            f"{column_name} column: {addend_values} + carry {carry} = "
+            f"{column_total}; {result_label}; carry {next_carry}."
+        )
+        carry = next_carry
+
+    return steps
+
+
 def solve(
     equation: str,
     strategy: str = "mrv_fc",
@@ -71,7 +167,7 @@ def solve(
     Strategies:
         backtracking: assign letters in their original order
         mrv: choose constrained letters first
-        mrv_fc: use MRV and reject completed columns that violate carries
+        mrv_fc: also reject completed columns that violate carries
     """
     valid_strategies = {"backtracking", "mrv", "mrv_fc"}
 

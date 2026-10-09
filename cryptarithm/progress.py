@@ -18,8 +18,16 @@ def load_progress():
         return []
 
 
-def record_attempt(equation, solved, letter_count=0, difficulty="Unknown"):
-    """Save one self-reported practice result."""
+def record_attempt(
+    equation,
+    solved,
+    letter_count=0,
+    difficulty="Unknown",
+    *,
+    challenge=False,
+    reason="",
+):
+    """Save one practice result or timed challenge outcome."""
     DATA_FILE.parent.mkdir(parents=True, exist_ok=True)
 
     history = load_progress()
@@ -30,6 +38,8 @@ def record_attempt(equation, solved, letter_count=0, difficulty="Unknown"):
             "solved": bool(solved),
             "letter_count": letter_count,
             "difficulty": difficulty,
+            "source": "challenge" if challenge else "practice",
+            "reason": reason,
         }
     )
 
