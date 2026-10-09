@@ -1,7 +1,7 @@
 from datetime import datetime
 from time import time, time_ns
 
-import streamlit as st
+import streamlit as st  # type: ignore[import-not-found]
 
 from cryptarithm.generator import generate_puzzle
 from cryptarithm.solver import (
