@@ -44,7 +44,7 @@ with st.sidebar:
         key="equation",
         help="Use letters A-Z, '+' between addends, and one '=' sign.",
     )
-    if st.button("Solve puzzle", type="primary", use_container_width=True):
+    if st.button("Solve puzzle", type="primary", width="stretch"):
         st.session_state.solve_requested = True
 
     st.divider()
@@ -52,7 +52,7 @@ with st.sidebar:
     difficulty = st.selectbox("Difficulty", ["Easy", "Medium", "Hard"])
     st.button(
         "Generate puzzle",
-        use_container_width=True,
+        width="stretch",
         on_click=_generate_puzzle,
         args=(difficulty,),
     )
@@ -81,7 +81,7 @@ with solve_tab:
                         for letter, digit in sorted(mapping.items())
                     ],
                     hide_index=True,
-                    use_container_width=True,
+                    width="stretch",
                 )
 
                 addends = [
@@ -115,11 +115,11 @@ with practice_tab:
     st.write("Try the puzzle yourself, then record how it went.")
     result_columns = st.columns(2)
     if result_columns[0].button(
-        "I solved it", type="primary", use_container_width=True
+        "I solved it", type="primary", width="stretch"
     ):
         solved_by_user = True
     elif result_columns[1].button(
-        "I need more practice", use_container_width=True
+        "I need more practice", width="stretch"
     ):
         solved_by_user = False
     else:
@@ -181,7 +181,7 @@ with compare_tab:
                     for label, result in comparison_results
                 ],
                 hide_index=True,
-                use_container_width=True,
+                width="stretch",
             )
             st.caption(
                 "Compare multiple puzzles before drawing conclusions from a "
@@ -255,5 +255,5 @@ with progress_tab:
                     for attempt in reversed(history)
                 ],
                 hide_index=True,
-                use_container_width=True,
+                width="stretch",
             )
