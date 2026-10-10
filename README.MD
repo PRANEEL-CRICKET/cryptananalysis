@@ -27,7 +27,7 @@ python -m pip install -r requirements.txt
 ### Web app
 
 ```powershell
-python -m streamlit run app_web.py
+python -m streamlit run app.py
 ```
 
 Practice history in the web app is private to the current browser session and
@@ -38,12 +38,12 @@ To publish the web app with Streamlit Community Cloud:
 1. Push this repository to GitHub.
 2. Sign in at [share.streamlit.io](https://share.streamlit.io/).
 3. Create an app from `PRANEEL-CRICKET/cryptananalysis`, branch `main`, file
-   `app_web.py`.
+   `app.py`.
 
 ### Desktop app
 
 ```powershell
-python app.py
+python app_desktop.py
 ```
 
 The desktop app saves practice history locally to `data/progress.json`.
